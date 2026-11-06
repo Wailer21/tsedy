@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 
-const API = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-const CREATOR_NAME = import.meta.env.VITE_CREATOR_NAME || 'The Creator Studio';
-const CREATOR_BIO = import.meta.env.VITE_CREATOR_BIO || 'A home for useful ideas, fresh perspectives, and stories worth sharing.';
-const CREATOR_AVATAR = import.meta.env.VITE_CREATOR_AVATAR_URL || '';
-const CATEGORIES = ['Education', 'Technology', 'Entertainment', 'Lifestyle', 'Other'];
+const API = (process.env.REACT_APP_API_BASE_URL || '').replace(/\/$/, '');
+const CREATOR_NAME = process.env.REACT_APP_CREATOR_NAME || 'The Creator Studio';
+const CREATOR_BIO = process.env.REACT_APP_CREATOR_BIO || 'A home for useful ideas, fresh perspectives, and stories worth sharing.';
+const CREATOR_AVATAR = process.env.REACT_APP_CREATOR_AVATAR_URL || '';
+const CATEGORIES = ['News', 'Education', 'Technology', 'Entertainment', 'Lifestyle', 'Other'];
 const TYPES = ['Video', 'Article', 'Image', 'Podcast', 'Other'];
 
 async function request(path, options = {}) {
@@ -35,14 +35,36 @@ function dateLabel(value) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
 }
 
-function Avatar({ size = 'large' }) {
-  return CREATOR_AVATAR
-    ? <img className={`avatar avatar-${size}`} src={CREATOR_AVATAR} alt={`${CREATOR_NAME} profile`} />
-    : <div className={`avatar avatar-${size} avatar-fallback`} aria-label={`${CREATOR_NAME} profile`}>{CREATOR_NAME.slice(0, 1).toUpperCase()}</div>;
+function readingTime(content) {
+  const words = `${content?.title || ''} ${content?.description || ''} ${content?.articleBody || ''}`.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(words / 220));
+}
+
+function Avatar({ size = 'large', name = CREATOR_NAME, imageUrl = CREATOR_AVATAR }) {
+  return imageUrl
+    ? <img className={`avatar avatar-${size}`} src={imageUrl} alt={`${name} profile`} />
+    : <div className={`avatar avatar-${size} avatar-fallback`} aria-label={`${name} profile`}>{name.slice(0, 1).toUpperCase()}</div>;
+}
+
+function ContentCard({ content, index, showCreator = false, onSelect, onOpenCreator }) {
+  const creatorName = content.creator?.displayName || 'Creator';
+  return <article className={`story-row card-tone-${index % 4}`}>
+    <div className="story-copy">
+      {showCreator && content.creator && <button type="button" className="story-author" onClick={() => onOpenCreator(content.creator._id)} aria-label={`Open ${creatorName}'s profile`}><Avatar size="byline" name={creatorName} imageUrl={content.creator.avatarUrl} /><span>{creatorName}</span></button>}
+      <button type="button" className="story-title" onClick={() => onSelect(content._id)}>{content.title}</button>
+      <p className="story-description">{content.description}</p>
+      <div className="story-meta"><span>{content.category}</span><i>·</i><span>{dateLabel(content.publishAt)}</span><i>·</i><span>{readingTime(content)} min read</span></div>
+    </div>
+    <button type="button" className="story-thumbnail" aria-label={`Read ${content.title}`} onClick={() => onSelect(content._id)}>
+      {content.thumbnailUrl ? <img src={content.thumbnailUrl} alt="" /> : <span>{content.contentType === 'Podcast' ? '♫' : content.contentType === 'Article' ? '¶' : '✳'}</span>}
+    </button>
+  </article>;
 }
 
 function App() {
   const [section, setSection] = useState('home');
+  const [creators, setCreators] = useState([]);
+  const [creatorId, setCreatorId] = useState(() => new URLSearchParams(window.location.search).get('creator') || '');
   const [contents, setContents] = useState([]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
@@ -54,6 +76,10 @@ function App() {
   const [likeCount, setLikeCount] = useState(0);
   const [flash, setFlash] = useState('');
   const [token, setToken] = useState(() => localStorage.getItem('creator-studio-token') || '');
+  const [sessionCreator, setSessionCreator] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('creator-studio-creator') || 'null'); }
+    catch { return null; }
+  });
   const [login, setLogin] = useState({ email: '', password: '' });
   const [loginError, setLoginError] = useState('');
   const [stats, setStats] = useState(null);
@@ -65,28 +91,51 @@ function App() {
   const viewerKey = useMemo(getViewerKey, []);
 
   useEffect(() => {
-    const initialContent = new URLSearchParams(window.location.search).get('content');
+    const params = new URLSearchParams(window.location.search);
+    const initialContent = params.get('content');
     if (initialContent) setSelected(initialContent);
+  }, []);
+
+  useEffect(() => {
+    function syncLocation() {
+      const params = new URLSearchParams(window.location.search);
+      setCreatorId(params.get('creator') || '');
+      setSelected(params.get('content'));
+      setSection('home');
+    }
+    window.addEventListener('popstate', syncLocation);
+    return () => window.removeEventListener('popstate', syncLocation);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    request('/creators').then((data) => {
+      if (active) setCreators(data.creators || []);
+    }).catch((error) => { if (active) setFlash(error.message); });
+    return () => { active = false; };
   }, []);
 
   async function loadContents() {
     try {
       const params = new URLSearchParams();
+      if (creatorId) params.set('creatorId', creatorId);
       if (search.trim()) params.set('search', search.trim());
       if (category !== 'All') params.set('category', category);
-      const data = await request(`/contents?${params}`);
+      const query = params.toString();
+      const route = creatorId ? '/contents' : '/feed';
+      const data = await request(`${route}${query ? `?${query}` : ''}`);
       setContents(data.contents || []);
     } catch (error) { setFlash(error.message); }
   }
 
-  useEffect(() => { loadContents(); }, [search, category]);
+  useEffect(() => { loadContents(); }, [search, category, creatorId]);
   useEffect(() => {
     if (section === 'dashboard' && token) loadDashboard();
   }, [section, token]);
   useEffect(() => {
     if (!selected) { setDetail(null); setComments([]); return; }
     let active = true;
-    request(`/contents/${selected}?viewerKey=${encodeURIComponent(viewerKey)}`).then(async (data) => {
+    request(`/contents/${selected}?creatorId=${encodeURIComponent(creatorId)}&viewerKey=${encodeURIComponent(viewerKey)}`).then(async (data) => {
       if (!active) return;
       setDetail(data.content);
       setLikeCount(data.likeCount || 0);
@@ -95,7 +144,7 @@ function App() {
       if (active) setComments(commentData.comments || []);
     }).catch((error) => { if (active) setFlash(error.message); });
     return () => { active = false; };
-  }, [selected, viewerKey]);
+  }, [selected, creatorId, viewerKey]);
 
   async function loadDashboard() {
     try {
@@ -119,12 +168,45 @@ function App() {
     setSelected(null);
   }
 
+  function openStory(id) {
+    setSelected(id);
+    const params = new URLSearchParams();
+    if (creatorId) params.set('creator', creatorId);
+    params.set('content', id);
+    window.history.pushState({}, '', `/?${params.toString()}`);
+  }
+
+  function closeStory() {
+    setSelected(null);
+    window.history.pushState({}, '', creatorId ? `/?creator=${encodeURIComponent(creatorId)}` : '/');
+  }
+
+  function openFeed() {
+    setSection('home');
+    setCreatorId('');
+    setSelected(null);
+    setSearch('');
+    setCategory('All');
+    window.history.pushState({}, '', '/');
+  }
+
+  function openCreator(id) {
+    setSection('home');
+    setCreatorId(id);
+    setSelected(null);
+    setSearch('');
+    setCategory('All');
+    window.history.pushState({}, '', `/?creator=${encodeURIComponent(id)}`);
+  }
+
   async function submitLogin(event) {
     event.preventDefault();
     setLoginError('');
     try {
       const data = await request('/auth/login', { method: 'POST', body: JSON.stringify(login) });
       localStorage.setItem('creator-studio-token', data.token);
+      localStorage.setItem('creator-studio-creator', JSON.stringify(data.creator));
+      setSessionCreator(data.creator);
       setToken(data.token);
       setLogin({ email: '', password: '' });
     } catch (error) { setLoginError(error.message); }
@@ -132,6 +214,8 @@ function App() {
 
   function signOut() {
     localStorage.removeItem('creator-studio-token');
+    localStorage.removeItem('creator-studio-creator');
+    setSessionCreator(null);
     setToken('');
     setStats(null);
   }
@@ -154,9 +238,11 @@ function App() {
   }
 
   async function shareContent() {
-    const url = `${window.location.origin}/?content=${selected}`;
+    const sharedCreatorId = creatorId || detail?.creator?._id || detail?.creator;
+    const creatorQuery = sharedCreatorId ? `creator=${encodeURIComponent(sharedCreatorId)}&` : '';
+    const url = `${window.location.origin}/?${creatorQuery}content=${selected}`;
     try {
-      if (navigator.share) await navigator.share({ title: detail?.title || CREATOR_NAME, url });
+      if (navigator.share) await navigator.share({ title: detail?.title || creatorName, url });
       else { await navigator.clipboard.writeText(url); setFlash('Link copied to clipboard.'); }
     } catch (error) {
       if (error.name !== 'AbortError') setFlash('Could not share this link.');
@@ -203,79 +289,111 @@ function App() {
     } catch (error) { setAdminError(error.message); }
   }
 
-  const featured = contents.find((content) => content.featured) || contents[0];
+  const creatorProfile = creators.find((creator) => creator._id === creatorId) || null;
+  const creatorName = creatorProfile?.displayName || CREATOR_NAME;
+  const creatorBio = creatorProfile?.bio || (creatorProfile ? `Explore the latest content from ${creatorName}.` : CREATOR_BIO);
+  const creatorAvatar = creatorProfile?.avatarUrl || CREATOR_AVATAR;
+  const detailCreatorId = detail?.creator?._id || detail?.creator || creatorId;
+  const detailCreator = creators.find((creator) => creator._id === detailCreatorId) || null;
+  const detailCreatorName = detailCreator?.displayName || (creatorId ? creatorName : 'OpenPage writer');
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <button className="brand" onClick={() => { setSection('home'); setSelected(null); }}>
-          <span className="brand-mark">C</span><span>creator<span className="brand-light">studio</span></span>
+      {section !== 'dashboard' && <header className="topbar">
+        <button className="brand" onClick={openFeed}>
+          <span className="brand-word">OpenPage</span>
         </button>
         <nav aria-label="Main navigation">
-          <button className={section === 'home' ? 'nav-link active' : 'nav-link'} onClick={() => { setSection('home'); setSelected(null); }}>Explore</button>
-          <button className={section === 'dashboard' ? 'nav-link active' : 'nav-link'} onClick={openDashboard}>Creator dashboard</button>
+          <button className={!creatorId && section === 'home' ? 'nav-link active' : 'nav-link'} onClick={openFeed}>Explore</button>
+          {creatorId && <button className={section === 'home' ? 'nav-link active' : 'nav-link'} onClick={() => { setSection('home'); closeStory(); }}>{creatorName}</button>}
         </nav>
-        <button className="top-cta" onClick={openDashboard}>Creator login <span>↗</span></button>
-      </header>
+        <button className="top-cta" onClick={openDashboard}>{token ? 'Write' : 'Start writing'}</button>
+      </header>}
 
-      {section === 'home' ? (
-        <main>
-          <section className="hero">
-            <div className="hero-copy">
-              <div className="eyebrow"><span className="eyebrow-dot" /> A CREATOR'S WORLD, IN ONE PLACE</div>
-              <h1>Good ideas deserve<br /><em>a bigger audience.</em></h1>
-              <p>Explore the latest stories, videos, and conversations from {CREATOR_NAME}.</p>
-              <a className="button button-primary" href="#library">Explore the library <span>↓</span></a>
-              <div className="hero-meta"><span className="meta-line" /> New ideas added regularly</div>
-            </div>
-            <div className="hero-art">
-              <div className="art-orbit orbit-one" /><div className="art-orbit orbit-two" />
-              <div className="hero-card-back" />
-              <div className="hero-feature-card">
-                {featured?.thumbnailUrl ? <img src={featured.thumbnailUrl} alt="" /> : <div className="hero-image-fallback">{featured?.contentType === 'Podcast' ? '♫' : '✳'}</div>}
-                <div className="feature-overlay"><span className="pill">FEATURED</span><h3>{featured?.title || 'A little inspiration for your next big idea'}</h3><span className="feature-arrow">↗</span></div>
-              </div>
-              <div className="floating-note"><span className="note-icon">✦</span><div><strong>Stay curious.</strong><small>There is always more to discover.</small></div></div>
-              <div className="hero-counter"><strong>{contents.length.toString().padStart(2, '0')}</strong><span>STORIES<br />TO EXPLORE</span></div>
-            </div>
+      {section === 'home' ? (creatorId ? (
+        <main className="writer-page">
+          <section className="writer-profile">
+            <Avatar size="writer" name={creatorName} imageUrl={creatorAvatar} />
+            <div className="writer-profile-copy"><span className="overline">WRITER PROFILE</span><h1>{creatorName}</h1><p>{creatorBio}</p><div className="writer-stats">{contents.length} {contents.length === 1 ? 'story' : 'stories'} <span>·</span> Free to read</div></div>
+            <button className="button button-dark" onClick={openFeed}>Explore stories <span>↗</span></button>
           </section>
-
-          <section className="creator-strip">
-            <Avatar size="small" />
-            <div><span className="overline">MEET YOUR CREATOR</span><strong>{CREATOR_NAME}</strong></div>
-            <p>{CREATOR_BIO}</p>
-            <span className="strip-star">✳</span>
-          </section>
-
-          <section id="library" className="library-section">
-            <div className="section-head">
-              <div><span className="overline">THE LATEST</span><h2>Explore the library<span className="green-dot">.</span></h2></div>
-              <div className="result-count">{contents.length} {contents.length === 1 ? 'piece' : 'pieces'} of content <span>↘</span></div>
-            </div>
+          <section id="library" className="writer-stories">
+            <div className="section-head"><div><span className="overline">PUBLISHED WRITING</span><h2>Stories by {creatorName}</h2></div><div className="result-count">{contents.length} {contents.length === 1 ? 'story' : 'stories'}</div></div>
             <div className="filters">
-              <label className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search stories, topics, ideas..." /><kbd>⌘ K</kbd></label>
+              <label className="search-box"><span aria-hidden="true">⌕</span><input type="search" aria-label={`Search ${creatorName}'s stories`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search these stories..." /></label>
               <div className="category-tabs" aria-label="Filter by category">
                 {['All', ...CATEGORIES].map((item) => <button key={item} className={category === item ? 'category-tab selected' : 'category-tab'} onClick={() => setCategory(item)}>{item}</button>)}
               </div>
             </div>
-            <div className="content-grid">
-              {contents.map((content, index) => <article key={content._id} className={`content-card card-tone-${index % 4}`} onClick={() => setSelected(content._id)} tabIndex="0" onKeyDown={(event) => event.key === 'Enter' && setSelected(content._id)}>
-                <div className="card-visual">
-                  {content.thumbnailUrl ? <img src={content.thumbnailUrl} alt="" /> : <div className="card-art"><span>{content.contentType === 'Podcast' ? '♫' : content.contentType === 'Article' ? '¶' : '✳'}</span><i /></div>}
-                  <span className="type-tag">{content.contentType}</span><span className="card-arrow">↗</span>
-                </div>
-                <div className="card-body"><div className="card-meta"><span>{content.category}</span><span>{dateLabel(content.publishAt)}</span></div><h3>{content.title}</h3><p>{content.description}</p><div className="card-footer"><span>Read more</span><span className="arrow-line">⟶</span></div></div>
-              </article>)}
-              {!contents.length && <div className="empty-state"><span>✳</span><h3>No stories found</h3><p>Try a different search or category. New content will appear here when it is published.</p></div>}
+            <div className="story-list">
+              {contents.map((content, index) => <ContentCard key={content._id} content={content} index={index} onSelect={openStory} />)}
+              {!contents.length && <div className="empty-state"><span>✳</span><h3>No stories found</h3><p>Try another search, or check back when {creatorName} publishes again.</p></div>}
             </div>
           </section>
-          <footer className="footer"><span>© {new Date().getFullYear()} {CREATOR_NAME}</span><span>Made for curiosity <b>✳</b></span><button onClick={openDashboard}>Creator access ↗</button></footer>
+          <footer className="footer"><span>© {new Date().getFullYear()} OpenPage</span><span>Every story is free to read</span><button onClick={openFeed}>Explore all stories ↗</button></footer>
         </main>
       ) : (
-        <main className="dashboard-page">
-          {!token ? <section className="login-layout"><div className="login-art"><span className="login-spark">✳</span><span className="overline">YOUR CREATIVE SPACE</span><h1>Make good<br />things happen.</h1><p>Manage your stories, understand your audience, and keep everything moving.</p></div><form className="login-card" onSubmit={submitLogin}><span className="overline">CREATOR ACCESS</span><h2>Welcome back</h2><p>Sign in to manage your content.</p>{loginError && <div className="error-message">{loginError}</div>}<label>Email address<input type="email" required autoComplete="username" value={login.email} onChange={(event) => setLogin({ ...login, email: event.target.value })} placeholder="you@example.com" /></label><label>Password<input type="password" required autoComplete="current-password" value={login.password} onChange={(event) => setLogin({ ...login, password: event.target.value })} placeholder="Enter your password" /></label><button className="button button-dark" type="submit">Sign in <span>→</span></button><small>Your dashboard is private and protected.</small></form></section> : (
+        <main className="feed-page">
+          <section className="feed-hero">
+            <div><span className="overline">A PLACE FOR GOOD IDEAS</span><h1>Read freely.<br /><em>Think deeply.</em></h1><p>Stories and ideas from independent writers. Always free to read.</p></div>
+            <div className="feed-hero-note"><span>OPEN TO EVERYONE</span><strong>No paywalls.<br />Just good writing.</strong><button onClick={openDashboard}>Start writing <span>↗</span></button></div>
+          </section>
+          <div className="feed-layout">
+            <section className="feed-section" aria-labelledby="feed-heading">
+              <div className="section-head"><div><span className="overline">LATEST FROM THE COMMUNITY</span><h2 id="feed-heading">Stories for you</h2></div><div className="result-count">{contents.length} {contents.length === 1 ? 'story' : 'stories'}</div></div>
+              <div className="feed-categories" aria-label="Filter by topic">
+                {['All', ...CATEGORIES].map((item) => <button key={item} className={category === item ? 'category-tab selected' : 'category-tab'} onClick={() => setCategory(item)}>{item === 'All' ? 'For you' : item}</button>)}
+              </div>
+              <label className="search-box feed-search"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search stories" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search stories" /></label>
+              <div className="story-list">
+                {contents.map((content, index) => <ContentCard key={content._id} content={content} index={index} showCreator onSelect={openStory} onOpenCreator={openCreator} />)}
+                {!contents.length && <div className="empty-state"><span>✳</span><h3>No stories yet</h3><p>Published writing will appear here. Every story is free to read.</p></div>}
+              </div>
+            </section>
+            <aside className="feed-aside">
+              <section className="aside-block"><span className="overline">WRITERS TO EXPLORE</span><h2>Meet the people<br />behind the stories.</h2>
+                {creators.map((creator) => <button type="button" className="writer-link" key={creator._id} onClick={() => openCreator(creator._id)}><Avatar size="byline" name={creator.displayName} imageUrl={creator.avatarUrl} /><span><strong>{creator.displayName}</strong><small>{creator.bio || 'Independent writer'}</small></span><b>↗</b></button>)}
+                {!creators.length && <p className="aside-empty">Writer profiles will appear here.</p>}
+              </section>
+              <section className="aside-note"><span className="overline">OPENPAGE IS FREE</span><p>Read every published story. Create an account only when you’re ready to write.</p><button onClick={openDashboard}>Write your first story ↗</button></section>
+            </aside>
+          </div>
+          <footer className="footer"><span>© {new Date().getFullYear()} OpenPage</span><span>Read freely. Write freely.</span><button onClick={openDashboard}>Start writing ↗</button></footer>
+        </main>
+      )) : (
+        <main className={token ? 'dashboard-page dashboard-page-private' : 'dashboard-page'}>
+          {!token ? <main className="login-page">
+            <header className="login-topbar">
+              <button className="login-brand" onClick={openFeed}><span className="login-brand-mark">O</span><span>OpenPage</span></button>
+              <span className="login-topbar-label">WRITER EDITION</span>
+              <button className="login-return" onClick={openFeed}>← Back to reading</button>
+            </header>
+            <section className="login-frame">
+              <div className="login-editorial">
+                <span className="login-edition">OPENPAGE / WRITER ACCESS</span>
+                <div className="login-manifesto">
+                  <span className="login-manifesto-label">A HOME FOR YOUR IDEAS</span>
+                  <h1>Make room<br />for your next<br /><em>good idea.</em></h1>
+                  <p>Write, publish, and share your stories with readers who are ready to listen.</p>
+                </div>
+                <div className="login-note"><span>01 — YOUR WORKSPACE</span><strong>Your words have somewhere to go.</strong></div>
+                <span className="login-watermark" aria-hidden="true">O</span>
+              </div>
+              <form className="login-card login-panel" onSubmit={submitLogin}>
+                <span className="login-form-kicker">WRITER SIGN IN</span>
+                <h2>Welcome back.</h2>
+                <p>Sign in to pick up where you left off.</p>
+                {loginError && <div className="error-message">{loginError}</div>}
+                <label>Email address<input type="email" required autoComplete="username" value={login.email} onChange={(event) => setLogin({ ...login, email: event.target.value })} placeholder="you@example.com" /></label>
+                <label>Password<input type="password" required autoComplete="current-password" value={login.password} onChange={(event) => setLogin({ ...login, password: event.target.value })} placeholder="Enter your password" /></label>
+                <button className="button button-dark" type="submit">Continue to your stories <span>→</span></button>
+                <small>Your writing space is private to your account.</small>
+              </form>
+            </section>
+            <footer className="login-footer"><span>OpenPage</span><span>Read freely. Write freely.</span><span>© {new Date().getFullYear()}</span></footer>
+          </main> : (
             <section className="admin-wrap">
-              <div className="admin-header"><div><span className="overline">YOUR WORKSPACE</span><h1>Creator dashboard<span className="green-dot">.</span></h1><p>Manage your content and keep your community close.</p></div><button className="button button-outline" onClick={signOut}>Sign out <span>↗</span></button></div>
+              <div className="admin-header"><div><span className="overline">YOUR WORKSPACE</span><h1>{sessionCreator?.displayName ? `${sessionCreator.displayName}’s dashboard` : 'Creator dashboard'}<span className="green-dot">.</span></h1><p>Manage your content and keep your community close.</p></div><button className="button button-outline" onClick={signOut}>Sign out <span>↗</span></button></div>
               {adminError && <div className="error-message">{adminError}</div>}
               <div className="admin-tabs">{[['overview', 'Overview'], ['content', 'Content'], ['comments', 'Comments']].map(([key, label]) => <button key={key} className={adminTab === key ? 'admin-tab active' : 'admin-tab'} onClick={() => { setAdminTab(key); setEditing(null); }}>{label}{key === 'comments' && stats?.pendingComments > 0 && <i>{stats.pendingComments}</i>}</button>)}<button className="button button-primary add-button" onClick={() => { setEditing({}); setAdminTab('form'); }}>+ Add content</button></div>
               {adminTab === 'overview' && <>
@@ -290,7 +408,19 @@ function App() {
         </main>
       )}
 
-      {selected && detail && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setSelected(null)}><article className="detail-modal"><button className="modal-close" onClick={() => setSelected(null)} aria-label="Close">×</button><div className="detail-visual">{detail.thumbnailUrl ? <img src={detail.thumbnailUrl} alt="" /> : <span>✳</span>}</div><div className="detail-content"><div className="card-meta"><span>{detail.category} · {detail.contentType}</span><span>{dateLabel(detail.publishAt)}</span></div><h2>{detail.title}</h2><p className="detail-description">{detail.description}</p>{detail.articleBody && <div className="article-body">{detail.articleBody.split('\n').map((line, index) => <p key={index}>{line}</p>)}</div>}{detail.mediaUrl && <a className="media-link" href={detail.mediaUrl} target="_blank" rel="noreferrer">Open {detail.contentType.toLowerCase()} ↗</a>}<div className="engagement"><button className={liked ? 'engage-button liked' : 'engage-button'} onClick={toggleLike}><span>{liked ? '♥' : '♡'}</span> {likeCount} likes</button><button className="engage-button" onClick={shareContent}>↗ Share</button><span>{detail.views || 0} views</span></div><div className="comments-section"><h3>Join the conversation <span>{comments.length}</span></h3>{comments.map((comment) => <div className="public-comment" key={comment._id}><div className="comment-avatar">{comment.displayName.slice(0, 1).toUpperCase()}</div><div><strong>{comment.displayName}</strong><p>{comment.body}</p></div></div>)}{!comments.length && <p className="muted">Be the first to join the conversation.</p>}<form className="public-comment-form" onSubmit={submitComment}><input required maxLength="40" placeholder="Your name" value={commentForm.displayName} onChange={(event) => setCommentForm({ ...commentForm, displayName: event.target.value })} /><textarea required minLength="5" maxLength="1000" placeholder="Write a thoughtful comment..." value={commentForm.body} onChange={(event) => setCommentForm({ ...commentForm, body: event.target.value })} /><button className="button button-dark" type="submit">Post comment <span>→</span></button></form></div></div></article></div>}
+      {selected && <div className="reader-screen">
+        <div className="reader-topbar"><button type="button" className="reader-back" onClick={closeStory}>← Back to stories</button><span className="reader-wordmark">OpenPage</span><button type="button" className="reader-share" onClick={shareContent}>Share</button></div>
+        {!detail ? <div className="reader-loading">Opening story…</div> : <article className="reader-article" aria-labelledby="content-detail-title">
+          <button type="button" className="reader-author" onClick={() => detailCreatorId && openCreator(detailCreatorId)}><Avatar size="byline" name={detailCreatorName} imageUrl={detailCreator?.avatarUrl || ''} /><span><strong>{detailCreatorName}</strong><small>{dateLabel(detail.publishAt)} · {readingTime(detail)} min read · Free to read</small></span></button>
+          <header className="reader-heading"><div className="reader-kicker">{detail.category} <span>·</span> {detail.contentType} <span>·</span> Free to read</div><h1 id="content-detail-title">{detail.title}</h1><p>{detail.description}</p></header>
+          <div className="reader-actions"><button className={liked ? 'engage-button liked' : 'engage-button'} onClick={toggleLike}><span>{liked ? '♥' : '♡'}</span>{likeCount}</button><button className="engage-button" onClick={shareContent}>↗ Share</button><span>{detail.views || 0} reads</span></div>
+          {detail.thumbnailUrl && <figure className="reader-cover"><img src={detail.thumbnailUrl} alt="" /><figcaption>{detail.title}</figcaption></figure>}
+          <div className="article-body">{detail.articleBody ? detail.articleBody.split(/\n+/).filter((line) => line.trim()).map((line, index) => <p key={index}>{line}</p>) : <p>{detail.description}</p>}</div>
+          {detail.mediaUrl && <a className="media-link" href={detail.mediaUrl} target="_blank" rel="noreferrer">Open {detail.contentType.toLowerCase()} ↗</a>}
+          {detailCreatorId && <button type="button" className="more-from-writer" onClick={() => openCreator(detailCreatorId)}>More stories by {detailCreatorName} ↗</button>}
+          <section className="comments-section"><h2>Conversation <span>{comments.length}</span></h2>{comments.map((comment) => <div className="public-comment" key={comment._id}><div className="comment-avatar">{comment.displayName.slice(0, 1).toUpperCase()}</div><div><strong>{comment.displayName}</strong><p>{comment.body}</p></div></div>)}{!comments.length && <p className="muted">Be the first to respond.</p>}<form className="public-comment-form" onSubmit={submitComment}><input required maxLength="40" placeholder="Your name" value={commentForm.displayName} onChange={(event) => setCommentForm({ ...commentForm, displayName: event.target.value })} /><textarea required minLength="5" maxLength="1000" placeholder="Add to the conversation..." value={commentForm.body} onChange={(event) => setCommentForm({ ...commentForm, body: event.target.value })} /><button className="button button-dark" type="submit">Respond</button></form></section>
+        </article>}
+      </div>}
       {flash && <button className="toast" onClick={() => setFlash('')}>{flash}<span>×</span></button>}
     </div>
   );
@@ -301,19 +431,24 @@ function ContentRow({ content, onEdit, onDelete }) {
 }
 
 function ContentForm({ content, onSubmit }) {
+  const [thumbnailPreview, setThumbnailPreview] = useState(content?.thumbnailUrl || '');
+  const [thumbnailPreviewFailed, setThumbnailPreviewFailed] = useState(false);
   const localDate = content?.publishAt ? (() => { const date = new Date(content.publishAt); date.setMinutes(date.getMinutes() - date.getTimezoneOffset()); return date.toISOString().slice(0, 16); })() : '';
   return <form className="content-form" onSubmit={onSubmit}>
     <label className="wide">Title<input name="title" required maxLength="140" defaultValue={content?.title || ''} placeholder="Give your story a name" /></label>
     <label>Category<select name="category" defaultValue={content?.category || 'Education'}>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select></label>
     <label>Content type<select name="contentType" defaultValue={content?.contentType || 'Article'}>{TYPES.map((item) => <option key={item}>{item}</option>)}</select></label>
     <label className="wide">Short description<textarea name="description" required maxLength="500" defaultValue={content?.description || ''} placeholder="What should viewers know about this?" /></label>
-    <label>Thumbnail image URL<input name="thumbnailUrl" type="url" defaultValue={content?.thumbnailUrl || ''} placeholder="https://..." /></label>
+    <label>Thumbnail image URL<input name="thumbnailUrl" type="text" maxLength="500" defaultValue={content?.thumbnailUrl || ''} placeholder="https://... or /thumbnails/..." onChange={(event) => { setThumbnailPreview(event.target.value.trim()); setThumbnailPreviewFailed(false); }} /></label>
+    <div className="thumbnail-preview" aria-label="Thumbnail preview">
+      {thumbnailPreview && !thumbnailPreviewFailed ? <img src={thumbnailPreview} alt="Thumbnail preview" onError={() => setThumbnailPreviewFailed(true)} /> : <div><span>✳</span><small>{thumbnailPreviewFailed ? 'Preview unavailable' : 'Thumbnail preview'}</small></div>}
+    </div>
     <label>Media URL<input name="mediaUrl" type="url" defaultValue={content?.mediaUrl || ''} placeholder="Video, audio, or external article URL" /></label>
     <label className="wide">Article text <span className="optional">(optional)</span><textarea name="articleBody" className="article-input" defaultValue={content?.articleBody || ''} placeholder="Paste article content here, if applicable." /></label>
     <label>Status<select name="status" defaultValue={content?.status || 'Draft'}><option>Draft</option><option>Published</option><option>Scheduled</option></select></label>
     <label>Publication date<input name="publishAt" type="datetime-local" defaultValue={localDate} /></label>
     <label className="check-label wide"><input name="featured" type="checkbox" defaultChecked={content?.featured || false} /> Feature this on the viewer portal</label>
-    <div className="form-actions wide"><button className="button button-dark" type="submit">Save content <span>→</span></button><button type="button" className="button button-plain" onClick={(event) => event.currentTarget.form.reset()}>Reset form</button></div>
+    <div className="form-actions wide"><button className="button button-dark" type="submit">Save content <span>→</span></button><button type="button" className="button button-plain" onClick={(event) => { event.currentTarget.form.reset(); setThumbnailPreview(content?.thumbnailUrl || ''); setThumbnailPreviewFailed(false); }}>Reset form</button></div>
   </form>;
 }
 

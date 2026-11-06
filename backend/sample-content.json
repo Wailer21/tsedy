@@ -1,0 +1,50 @@
+[
+  {
+    "creator": { "$oid": "6aedd3e7454645a272541f16" },
+    "title": "The 20 Minute Weekly Reset",
+    "description": "A simple Sunday routine for choosing priorities, clearing distractions, and starting the week with a plan you can actually follow.",
+    "category": "Lifestyle",
+    "contentType": "Article",
+    "thumbnailUrl": "",
+    "mediaUrl": "",
+    "articleBody": "A useful week begins with a short pause. Set aside twenty minutes, open a notebook, and look at the week ahead.\n\nFirst, write down every commitment you already have. Then choose three outcomes that would make the week feel successful. Keep them small enough to finish alongside your regular responsibilities.\n\nNext, give each outcome a first step and a time on your calendar. A plan becomes easier to follow when it says what to do and when to begin.\n\nFinish by clearing one small distraction: prepare your workspace, pack what you need, or close tabs you no longer use. You do not need a perfect plan. You only need a clear first step.",
+    "status": "Published",
+    "publishAt": { "$date": "2026-10-12T09:00:00.000Z" },
+    "featured": true,
+    "views": 0,
+    "createdAt": { "$date": "2026-10-11T15:30:00.000Z" },
+    "updatedAt": { "$date": "2026-10-12T09:00:00.000Z" }
+  },
+  {
+    "creator": { "$oid": "6aedd3e7454645a272541f16" },
+    "title": "Make Search Work for Your Ideas",
+    "description": "A practical way to organize titles and descriptions so readers can find useful posts without needing to know exactly what to search for.",
+    "category": "Technology",
+    "contentType": "Article",
+    "thumbnailUrl": "",
+    "mediaUrl": "",
+    "articleBody": "Good search starts with the words your audience already uses. Before publishing, write down the main question the post answers and a few related phrases a reader might type.\n\nUse the clearest phrase in the title. Then explain the topic naturally in the description. Avoid repeating keywords just to repeat them; a short, accurate summary helps both people and search tools.\n\nKeep each post focused on one main idea. When a post covers several unrelated topics, it becomes harder to describe and harder to find.\n\nFinally, review older posts every few months. Update titles or descriptions when the content changes, and link related posts so readers can continue exploring.",
+    "status": "Published",
+    "publishAt": { "$date": "2026-10-20T10:00:00.000Z" },
+    "featured": false,
+    "views": 0,
+    "createdAt": { "$date": "2026-10-19T12:15:00.000Z" },
+    "updatedAt": { "$date": "2026-10-20T10:00:00.000Z" }
+  },
+  {
+    "creator": { "$oid": "6aedd3e7454645a272541f16" },
+    "title": "Turn a Big Goal into Small Steps",
+    "description": "A straightforward method for breaking an intimidating project into visible milestones and choosing the next action.",
+    "category": "Education",
+    "contentType": "Article",
+    "thumbnailUrl": "",
+    "mediaUrl": "",
+    "articleBody": "Large goals can feel difficult because the finish line is far away. Start by describing what finished looks like in one sentence.\n\nNow divide the work into three to five milestones. Each milestone should produce something you can see, such as an outline, a first draft, or a completed lesson.\n\nChoose the next action that takes less than an hour. If you cannot name a small action, the milestone is still too broad. Make it smaller until you know exactly what to do.\n\nAt the end of each work session, write down the next action before you stop. That small habit makes it easier to return to the project and keep moving.",
+    "status": "Published",
+    "publishAt": { "$date": "2026-10-28T08:30:00.000Z" },
+    "featured": false,
+    "views": 0,
+    "createdAt": { "$date": "2026-10-27T16:00:00.000Z" },
+    "updatedAt": { "$date": "2026-10-28T08:30:00.000Z" }
+  }
+]
