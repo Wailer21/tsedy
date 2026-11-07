@@ -63,6 +63,7 @@ app.use(helmet());
 app.use(cors({ origin: allowedOrigins, credentials: false }));
 app.use(express.json({ limit: '1mb' }));
 app.use('/api/auth/login', rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false }));
+app.use('/api/auth/register', rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false }));
 app.use('/api/comments', rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: 'draft-8', legacyHeaders: false }));
 
 function fail(res, status, message) { return res.status(status).json({ message }); }
@@ -132,6 +133,27 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) return fail(res, 401, 'Email or password is incorrect.');
   const token = jwt.sign({ sub: user.id, email: user.email, role: user.role }, jwtSecret, { expiresIn: '8h' });
   return res.json({ token, creator: publicCreator(user) });
+}));
+
+app.post('/api/auth/register', asyncRoute(async (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const displayName = String(req.body.displayName || '').trim();
+  const password = String(req.body.password || '');
+  const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (!emailLooksValid || email.length > 254) return fail(res, 400, 'Enter a valid email address.');
+  if (displayName.length < 2 || displayName.length > 80) return fail(res, 400, 'Your name must be between 2 and 80 characters.');
+  if (password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) return fail(res, 400, 'Choose a password between 8 and 72 characters.');
+  if (await User.exists({ email })) return fail(res, 409, 'An account with this email already exists. Try signing in.');
+  const passwordHash = await bcrypt.hash(password, 12);
+  let creator;
+  try {
+    creator = await User.create({ email, passwordHash, displayName, role: 'creator' });
+  } catch (error) {
+    if (error.code === 11000) return fail(res, 409, 'An account with this email already exists. Try signing in.');
+    throw error;
+  }
+  const token = jwt.sign({ sub: creator.id, email: creator.email, role: creator.role }, jwtSecret, { expiresIn: '8h' });
+  return res.status(201).json({ token, creator: publicCreator(creator) });
 }));
 
 app.get('/api/creators', asyncRoute(async (_req, res) => {

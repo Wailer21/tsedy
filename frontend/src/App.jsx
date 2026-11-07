@@ -82,6 +82,7 @@ function App() {
   });
   const [login, setLogin] = useState({ email: '', password: '' });
   const [loginError, setLoginError] = useState('');
+  const [authMode, setAuthMode] = useState('login');
   const [stats, setStats] = useState(null);
   const [adminContents, setAdminContents] = useState([]);
   const [adminComments, setAdminComments] = useState([]);
@@ -209,6 +210,20 @@ function App() {
       setSessionCreator(data.creator);
       setToken(data.token);
       setLogin({ email: '', password: '' });
+    } catch (error) { setLoginError(error.message); }
+  }
+
+  async function submitRegistration(event) {
+    event.preventDefault();
+    setLoginError('');
+    try {
+      const data = await request('/auth/register', { method: 'POST', body: JSON.stringify(login) });
+      localStorage.setItem('creator-studio-token', data.token);
+      localStorage.setItem('creator-studio-creator', JSON.stringify(data.creator));
+      setSessionCreator(data.creator);
+      setToken(data.token);
+      setLogin({ email: '', password: '', displayName: '' });
+      setFlash('Your writer workspace is ready.');
     } catch (error) { setLoginError(error.message); }
   }
 
@@ -379,15 +394,17 @@ function App() {
                 <div className="login-note"><span>01 — YOUR WORKSPACE</span><strong>Your words have somewhere to go.</strong></div>
                 <span className="login-watermark" aria-hidden="true">O</span>
               </div>
-              <form className="login-card login-panel" onSubmit={submitLogin}>
-                <span className="login-form-kicker">WRITER SIGN IN</span>
-                <h2>Welcome back.</h2>
-                <p>Sign in to pick up where you left off.</p>
+              <form className="login-card login-panel" onSubmit={authMode === 'login' ? submitLogin : submitRegistration}>
+                <span className="login-form-kicker">{authMode === 'login' ? 'WRITER SIGN IN' : 'JOIN OPENPAGE'}</span>
+                <h2>{authMode === 'login' ? 'Welcome back.' : 'Start writing.'}</h2>
+                <p>{authMode === 'login' ? 'Sign in to pick up where you left off.' : 'Create your free writer account and publish your first story.'}</p>
                 {loginError && <div className="error-message">{loginError}</div>}
+                {authMode === 'register' && <label>Your name<input type="text" required minLength="2" maxLength="80" autoComplete="name" value={login.displayName || ''} onChange={(event) => setLogin({ ...login, displayName: event.target.value })} placeholder="How readers will know you" /></label>}
                 <label>Email address<input type="email" required autoComplete="username" value={login.email} onChange={(event) => setLogin({ ...login, email: event.target.value })} placeholder="you@example.com" /></label>
-                <label>Password<input type="password" required autoComplete="current-password" value={login.password} onChange={(event) => setLogin({ ...login, password: event.target.value })} placeholder="Enter your password" /></label>
-                <button className="button button-dark" type="submit">Continue to your stories <span>→</span></button>
-                <small>Your writing space is private to your account.</small>
+                <label>Password<input type="password" required minLength={authMode === 'register' ? 8 : undefined} maxLength={authMode === 'register' ? 72 : undefined} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} value={login.password} onChange={(event) => setLogin({ ...login, password: event.target.value })} placeholder={authMode === 'register' ? 'At least 8 characters' : 'Enter your password'} /></label>
+                <button className="button button-dark" type="submit">{authMode === 'login' ? 'Continue to your stories' : 'Create writer account'} <span>→</span></button>
+                <small>{authMode === 'login' ? 'Your writing space is private to your account.' : 'Free to join. Your workspace is private to you.'}</small>
+                <div className="login-mode-switch">{authMode === 'login' ? 'New to OpenPage?' : 'Already have an account?'} <button type="button" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setLoginError(''); }}>{authMode === 'login' ? 'Create a writer account' : 'Sign in'}</button></div>
               </form>
             </section>
             <footer className="login-footer"><span>OpenPage</span><span>Read freely. Write freely.</span><span>© {new Date().getFullYear()}</span></footer>

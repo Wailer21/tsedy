@@ -961,6 +961,9 @@ body { background: #fff; color: #242424; font-family: Arial, Helvetica, sans-ser
 .login-panel .button span { font-size: 17px; }
 .login-panel > small { margin-top: 18px; color: #858b85; font-size: 10px; text-align: left; }
 .login-panel .error-message { border-radius: 3px; }
+.login-mode-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 22px; padding-top: 17px; border-top: 1px solid #eceeea; color: #777d78; font-size: 11px; }
+.login-mode-switch button { padding: 2px 0; border: 0; background: transparent; color: #1a8917; font-size: inherit; font-weight: 600; }
+.login-mode-switch button:hover { text-decoration: underline; text-underline-offset: 3px; }
 .login-footer { display: flex; width: min(1120px, 100%); justify-content: space-between; gap: 16px; margin: 0 auto; padding: 20px 0 24px; color: #858b85; font-size: 10px; }
 .login-footer span:first-child { color: #45604e; font-weight: 700; }
 
